@@ -1,0 +1,13 @@
+{
+  "user": "andres.icaza@ug.uchile.cl",
+  "blocked": ["www.dcc.uchile.cl", "cc4303.bachmann.cl/secret"],
+  "forbidden_words": [
+    {"proxy": "[REDACTED]"},
+    {"DCC": "[FORBIDDEN]"},
+    {"biblioteca": "[???]"}
+  ],
+  "blocked_image": "gato.jpg",
+  "host": "0.0.0.0",
+  "port": 8000,
+  "recv_buffer": 4096
+}
