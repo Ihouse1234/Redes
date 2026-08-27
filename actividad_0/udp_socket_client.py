@@ -32,7 +32,7 @@ def remove_end_of_message(full_bytes, end_bytes):
 
 
 def send_full_message(sock, data_bytes, address, buff_size, end_bytes):
-    """Envía data_bytes en trozos <= buff_size y agrega la secuencia de fin."""
+    #Envía data_bytes en trozos <= buff_size y agrega la secuencia de fin.
     payload = data_bytes + end_bytes
     for i in range(0, len(payload), buff_size):
         sock.sendto(payload[i:i + buff_size], address)
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         origen = "argumento --message"
     else:
         # mensaje por defecto definido dentro del código del cliente
-        data_bytes = "Hola, este es un mensaje de prueba".encode()
+        data_bytes = "Hola, soy super feo jajsjjsjs".encode()
         origen = "mensaje por defecto"
 
     print("Creando socket - Cliente (UDP / no orientado a conexión)")
