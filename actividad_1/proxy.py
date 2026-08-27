@@ -3,11 +3,6 @@ import json
 import sys
 
 # =====================================================================
-#  CC4303 - Proxy FINAL (Parte 2 completa)
-#  Ultimo paso: recibir mensajes con un buffer de recepcion MAS PEQUENO
-#  que el mensaje. La idea (inspirada en las funciones de la semana 1) es
-#  hacer recv en un bucle acumulando bytes hasta saber que llego todo.
-#
 #  Preguntas del informe (respondidas en los comentarios):
 #   * Como se que el HEAD llego completo?  -> aparece el patron \r\n\r\n.
 #   * Que pasa si los headers no caben en el buffer? -> nada; se acumulan
@@ -15,21 +10,10 @@ import sys
 #   * Como se que el BODY llego completo? -> segun Content-Length, chunked,
 #     o cierre de la conexion.
 #   * Como se si llego el mensaje completo? -> HEAD completo Y BODY completo.
-#
-#  Solo se usan librerias permitidas: socket, json, sys.
 # =====================================================================
 
 IMG_PATH = "/__proxy_blocked_image__"
 
-
-# ---------------------------------------------------------------------
-#  Lector con buffer chico
-# ---------------------------------------------------------------------
-# Un socket TCP entrega un FLUJO de bytes. Con un buffer chico, cada recv
-# trae solo un pedacito. Esta clase acumula lo recibido en un buffer interno
-# y solo pide mas bytes a la red cuando hace falta. Ademas, al leer el HEAD
-# puede venir parte del BODY pegada en el mismo recv: ese sobrante queda
-# guardado en self.buffer para no perderlo.
 class SocketReader:
     def __init__(self, connection_socket, recv_buffer):
         self.socket = connection_socket
@@ -72,10 +56,6 @@ class SocketReader:
 
 
 def receive_http_message(reader, is_request):
-    """
-    Lee un mensaje HTTP completo (HEAD + BODY) con buffer chico.
-    Devuelve (head_bytes, body_bytes, head_lines).
-    """
     head_block, found = reader.read_until(b"\r\n\r\n")
     if not found or not head_block:
         return None
@@ -186,9 +166,7 @@ def guess_content_type(path):
 def build_403_response():
     html = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<title>403 Prohibido</title></head>"
-        "<body style='text-align:center;font-family:sans-serif'>"
-        "<h1>403 - Sitio bloqueado por el proxy</h1>"
+        "<h1>403 Error - Pero tenga este gato</h1>"
         f"<img src='{IMG_PATH}' alt='bloqueado' style='max-width:400px'>"
         "</body></html>"
     ).encode("utf-8")
@@ -198,13 +176,9 @@ def build_403_response():
 
 
 def build_image_response(image_path):
-    try:
-        with open(image_path, "rb") as fh:
-            data = fh.read()
-        status, ctype = "200 OK", guess_content_type(image_path)
-    except OSError:
-        data, status, ctype = b"imagen no encontrada", "404 Not Found", "text/plain"
-    head = (f"HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\n"
+    with open(image_path, "rb") as fh:
+        data = fh.read()
+    head = (f"HTTP/1.1 200 OK\r\nContent-Type: {guess_content_type(image_path)}\r\n"
             f"Content-Length: {len(data)}\r\nConnection: close\r\n\r\n").encode("latin-1")
     return head + data
 
@@ -251,7 +225,7 @@ def handle_client(client_socket, config, recv_buffer):
         client_socket.sendall(build_403_response())
         return
 
-    # 2) armamos la request para el servidor (header + sin gzip + cierre limpio)
+    # 2) armamos la request para el servidor
     request = build_request_bytes(req_head_lines, req_body, {
         "X-ElQuePregunta": user,
         "Connection": "close",
@@ -291,7 +265,7 @@ def main():
         config = json.load(fh)
     host = config.get("host", "0.0.0.0")
     port = config.get("port", 8000)
-    recv_buffer = config.get("recv_buffer", 4096)     # <-- baje a 50 para el test
+    recv_buffer = config.get("recv_buffer", 4096)    
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
