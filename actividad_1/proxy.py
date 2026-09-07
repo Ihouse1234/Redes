@@ -124,7 +124,7 @@ def get_destination(head_lines):
 
 
 def build_request_bytes(head_lines, body, extra_headers):
-    """Rearma la request agregando/reemplazando headers (para el servidor)."""
+    # Rearma la request agregando/reemplazando headers (para el servidor).
     lines = [head_lines[0]]
     for line in head_lines[1:]:
         name = line.split(b":", 1)[0].lower()
@@ -185,10 +185,10 @@ def build_image_response(image_path):
 
 def apply_forbidden_words(body, forbidden_words):
     for pair in forbidden_words:
-        for word_a, word_b in pair.items():
-            body = body.replace(word_a.encode("utf-8"), word_b.encode("utf-8"))
+        word_a = list(pair.keys())[0]      # la palabra a buscar
+        word_b = list(pair.values())[0]    # su reemplazo
+        body = body.replace(word_a.encode("utf-8"), word_b.encode("utf-8"))
     return body
-
 
 def rebuild_response(head_lines, body):
     new_lines = [head_lines[0]]
@@ -207,7 +207,7 @@ def handle_client(client_socket, config, recv_buffer):
     user = config.get("user", "Anonimo")
     forbidden_words = config.get("forbidden_words", [])
 
-    # 1) leemos la request del cliente con buffer chico
+    # leemos la request del cliente con buffer chico
     client_reader = SocketReader(client_socket, recv_buffer)
     parsed = receive_http_message(client_reader, is_request=True)
     if parsed is None:
@@ -225,7 +225,7 @@ def handle_client(client_socket, config, recv_buffer):
         client_socket.sendall(build_403_response())
         return
 
-    # 2) armamos la request para el servidor
+    # armamos la request para el servidor
     request = build_request_bytes(req_head_lines, req_body, {
         "X-ElQuePregunta": user,
         "Connection": "close",
@@ -238,7 +238,7 @@ def handle_client(client_socket, config, recv_buffer):
     try:
         origin_socket.connect((host, port))
         origin_socket.sendall(request)
-        # 3) leemos la respuesta del servidor, tambien con buffer chico
+        # leemos la respuesta del servidor, tambien con buffer chico
         origin_reader = SocketReader(origin_socket, recv_buffer)
         resp = receive_http_message(origin_reader, is_request=False)
     except OSError as error:
@@ -253,7 +253,7 @@ def handle_client(client_socket, config, recv_buffer):
         return
     resp_head_lines, resp_body = resp[2], resp[1]
 
-    # 4) reemplazo de palabras + Content-Length recalculado
+    # reemplazo de palabras + Content-Length recalculado
     resp_body = apply_forbidden_words(resp_body, forbidden_words)
     client_socket.sendall(rebuild_response(resp_head_lines, resp_body))
     print(f"    [OK] {len(resp_body)} bytes de body enviados al cliente")
@@ -282,8 +282,6 @@ def main():
                 print(f"    [EXC] {error}")
             finally:
                 client_socket.close()
-    except KeyboardInterrupt:
-        print("\nCerrando proxy...")
     finally:
         server_socket.close()
 
