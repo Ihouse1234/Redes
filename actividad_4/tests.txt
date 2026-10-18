@@ -1,0 +1,38 @@
+Primer test:
+
+Initial test passed
+ACK test passed
+Timeout test passed
+ssthresh test failed
+Timeout test 2 failed
+
+escribi mal el if, lol
+
+
+Parte 2
+respuestas...
+- (1) ¿Por qué le puede servir usar como base para Go Back-N el código de Stop & Wait 
+de la sección anterior? ¿Qué similitud tiene Go Back-N con Stop & Wait?
+Porque Stop & Wait es como un caso particular a GO-Back-N, pero con un tamaño 1. Go-Back-N permite enviar N segmentos. 
+Por eso el código de Stop & Wait sirve como base: ya maneja la ventana (con SlidingWindowCC), los números de secuencia, el envío del largo del mensaje, la verificación de ACKs y la retransmisión por timeout.
+Para Go-Back-N basta con aumentar el tamaño de la ventana y adaptar qué se envía al avanzar y qué se retransmite al ocurrir un timeout.
+
+- (2) En la sección anterior solo se muestra la función send de Stop & Wait, ¿Qué ocurre con la función recv? ¿Esta función cambia con el uso de SocketUDP  y SlidingWindowsCC?
+La función recv prácticamente no cambia. En Go-Back-N el receptor solo acepta segmentos en orden: si llega el número de secuencia esperado lo entrega y envía su ACK, y si llega cualquier otro lo descarta y reenvía el ACK del último segmento recibido correctamente. 
+Ese es el mismo comportamiento que tiene el receptor de Stop & Wait, por lo que no necesita una ventana deslizante: toda la lógica de ventana y retransmisión queda del lado del emisor. Usar SocketUDP solo cambia detalles de implementación 
+(manejo de timers y de la excepción TimeoutError), no la lógica del receptor, y SlidingWindowCC no es necesaria en el receptor.
+
+
+Se le pone el modo en los comandos cuando se prueba el codigo en linux con esto
+
+1. python3 -c "print('hola redes ' * 200)" > archivo.txt
+2. python3 Server.py localhost 8000 go_back_n > recibido.txt
+3. python3 Client.py localhost 8000 go_back_n < archivo.txt
+4. diff archivo.txt recibido.txt
+
+en vez de go_back_n puede ir stop_and_wait
+
+
+Testes con perdida y sin perdida pasan.
+
+
