@@ -5,6 +5,9 @@ import sys
 
 from socketUDP import SocketUDP
 from slidingWindowCC import SlidingWindowCC
+from CongestionControl import CongestionControl
+
+
 
 
 def _dbg(*args):
@@ -18,7 +21,7 @@ def _dbg(*args):
 # Como TODO segmento sale por _send(), descartar envios al azar simula
 # perdida en AMBAS direcciones (cada extremo descarta sus propios envios).
 DEBUG = True
-SIMULAR_PERDIDA_RATE = 0.0       
+SIMULAR_PERDIDA_RATE = 0.2       
 
 
 class SocketTCP:
@@ -42,6 +45,16 @@ class SocketTCP:
         # primer segmento de datos llega a accept(); lo guardamos aqui para
         # que la primera llamada a recv() lo consuma y no se pierda.
         self.pending_segment = None
+
+        #PARTE 3
+        self.congestion_control_on = False
+        self.congestion_controler = None
+
+    def set_congestion_control(self, valor):
+        self.congestion_control_on = valor
+
+    
+
 
 
     #4.
@@ -313,7 +326,36 @@ class SocketTCP:
             return
         seq = ventana.get_sequence_number(i)
         segmento = self.create_segment({"seq": seq, "data": data})
-        self._send(segmento, self.destination_address)    # con timer
+        self._send(segmento, self.destination_address)    
+        if seq > self.ultimo_seq_enviado:
+            self.ultimo_seq_enviado = seq
+
+    #funcion auxiliar 2
+
+    def _hay_pendientes(self, ventana, window_size):
+        for i in range(window_size):
+            s = ventana.get_sequence_number(i)
+            if s is not None and s > self.ultimo_seq_enviado:
+                return True
+        return False
+
+    #funcion auxiliar 3
+
+    def _enviar_pendientes(self, ventana, window_size):
+        for i in range(window_size):
+            s = ventana.get_sequence_number(i)
+            if s is not None and s > self.ultimo_seq_enviado:
+                self._enviar_elemento(ventana, i)
+
+    #funcion auxiliar 4
+    def _actualizar_ventana(self, ventana):
+        nuevo = self.congestion_controler.get_MSS_in_cwnd()
+        ventana.update_window_size(nuevo)
+        _dbg(f"   [cc] cwnd={self.congestion_controler.get_cwnd()} "
+            f"ssthresh={self.congestion_controler.get_ssthresh()} "
+            f"estado={self.congestion_controler.current_state} "
+            f"window_size={nuevo}")
+        return nuevo
 
     def recv_using_stop_and_wait(self, buff_size):
         if self.bytes_restantes == 0:          # mensaje nuevo: leer el largo
@@ -357,25 +399,39 @@ class SocketTCP:
         return self.recv_using_stop_and_wait(buff_size)
 
     def send_using_go_back_n(self, message):
-        WINDOW_SIZE = 8
-        data_list = [str(len(message)).encode()]
-        for i in range(0, len(message), self.MAX_DATA):
-            data_list.append(message[i:i + self.MAX_DATA])
 
-        ventana = SlidingWindowCC(WINDOW_SIZE, data_list, self.seq)
+        MSS = 8
+        data_list = [str(len(message)).encode()]
+        for i in range(0, len(message), MSS):
+            data_list.append(message[i:i + MSS])
+
+        
+        if self.congestion_control_on:
+            self.congestion_controler = CongestionControl(MSS)
+            window_size = self.congestion_controler.get_MSS_in_cwnd()
+        else:
+            window_size = 8
+
+        _dbg(f"   [cc] ventana inicial: window_size={window_size}")
+
+
+        ventana = SlidingWindowCC(window_size, data_list, self.seq)
         self.udp_socket.settimeout(self.TIMEOUT)
 
         # mandar toda la ventana inicial
-        for i in range(WINDOW_SIZE):
-            self._enviar_elemento(ventana, i)
+        self.ultimo_seq_enviado = -1
+        self._enviar_pendientes(ventana, window_size)
         while ventana.get_data(0) is not None:      # mientras quede algo sin confirmar
             try:
                 respuesta, _ = self._recvfrom(self.UDP_BUFF)
             except TimeoutError:
                 _dbg("   [gbn] timeout, retransmito toda la ventana")
-                self._stop_timer()                   # regla 3: borrar el timer muerto
-                for i in range(WINDOW_SIZE):
-                    self._enviar_elemento(ventana, i)
+                self._stop_timer()    
+                if self.congestion_control_on:
+                    self.congestion_controler.event_timeout()
+                    window_size = self._actualizar_ventana(ventana)
+                self.ultimo_seq_enviado = -1
+                self._enviar_pendientes(ventana, window_size)
                 continue
 
             p = self.parse_segment(respuesta)
@@ -383,26 +439,26 @@ class SocketTCP:
                 continue                             # no es un ACK, lo ignoramos
             ack = p["seq"]                           # "el próximo byte que espero"
 
-            # contar cuántos elementos de la ventana quedan confirmados
-            k = 0
-            while (k < WINDOW_SIZE
-                    and ventana.get_data(k) is not None
-                    and ventana.get_sequence_number(k) + len(ventana.get_data(k)) <= ack):
-                k += 1
+            avanzo = False
+            while True:
+                k = 0
+                while (k < window_size and ventana.get_data(k) is not None and ventana.get_sequence_number(k) + len(ventana.get_data(k)) <= ack):
+                    k += 1
 
-            if k == 0:
+                if k == 0:
+                    break                             
+                ventana.move_window(k)
+                avanzo = True
+                if k < window_size:
+                    break 
+
+            if not avanzo:
                 continue                             # ACK viejo/duplicado: no avanza nada
 
             self.seq = ack
-            ventana.move_window(k)
-
-            # los k elementos nuevos entraron al FINAL de la ventana
-            nuevos = []
-            for i in range(WINDOW_SIZE - k, WINDOW_SIZE):
-                if ventana.get_data(i) is not None:
-                    nuevos.append(i)
-
-            if nuevos or ventana.get_data(0) is None:
-                self._stop_timer()                   
-            for i in nuevos:
-                self._enviar_elemento(ventana, i)
+            if self.congestion_control_on:
+                self.congestion_controler.event_ack_received()
+                window_size = self._actualizar_ventana(ventana)
+            if self._hay_pendientes(ventana, window_size) or ventana.get_data(0) is None:
+                self._stop_timer()
+            self._enviar_pendientes(ventana, window_size)

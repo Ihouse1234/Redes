@@ -16,6 +16,7 @@ def main():
         mode = "stop_and_wait" 
         
     client = SocketTCP()
+    client.set_congestion_control(True)
     client.connect(address)          # 3-way handshake
     client.send(data, mode = mode)                # Go Back N (envia largo + contenido)
     client.close()                   # cierre de conexion (Host A)
