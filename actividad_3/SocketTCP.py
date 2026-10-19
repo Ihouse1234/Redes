@@ -262,7 +262,7 @@ class SocketTCP:
 
     # ----- Host B: continua el cierre al recibir un FIN -----
     def recv_close(self):
-        # esperar el FIN de A (bloqueante)
+        # esperar el FIN de A
         self.udp_socket.settimeout(None)
         while True:
             respuesta, addr = self.udp_socket.recvfrom(self.UDP_BUFF)
