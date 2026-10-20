@@ -20,15 +20,19 @@ def _dbg(*args):
 # Si no puede usar netem, ponga SIMULAR_PERDIDA_RATE > 0 (ej: 0.2 = 20%).
 # Como TODO segmento sale por _send(), descartar envios al azar simula
 # perdida en AMBAS direcciones (cada extremo descarta sus propios envios).
+
 DEBUG = True
-SIMULAR_PERDIDA_RATE = 0.2       
+SIMULAR_PERDIDA_RATE = 0.2
 
 
 class SocketTCP:
     HEADER_SIZE = 7                       # 1(SYN)+1(ACK)+1(FIN)+4(SEQ)
     MAX_DATA = 16                         
     UDP_BUFF = HEADER_SIZE + MAX_DATA     
-    TIMEOUT = 1.0                         # timeout fijo de Stop & Wait (seg)
+    TIMEOUT = 1.0    
+    
+
+
 
     def __init__(self):
         # Constructor SIN parametros: se invoca como SocketTCP().
@@ -50,6 +54,11 @@ class SocketTCP:
         self.congestion_control_on = False
         self.congestion_controler = None
 
+
+        #PARA LOS EXPERIMENTOS
+        self.number_of_sent_segments = 0
+
+
     def set_congestion_control(self, valor):
         self.congestion_control_on = valor
 
@@ -59,10 +68,16 @@ class SocketTCP:
 
     #4.
     def _send(self, segment, address):
+
+        #PARA LA EXPERIMENTACION
+        self.number_of_sent_segments += 1
         # envío normal: si hay timeout configurado, PRENDE el timer
+        
         self.udp_socket.sendto(segment, address)
 
     def _send_sin_timer(self, segment, address):
+        #PARA LA EXPERIMENTACION
+        self.number_of_sent_segments += 1
         # para los ACKs: usa el socket de python "de adentro",
         # así no se prende ningún timer
         self.udp_socket.socket_udp.sendto(segment, address)
