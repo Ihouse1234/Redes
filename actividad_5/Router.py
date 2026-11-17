@@ -6,15 +6,16 @@ BUFF_SIZE = 1024
 def parse_packet(IP_packet: bytes) -> dict:
     ip = ".".join(str(b) for b in IP_packet[0:4])
     port = int.from_bytes(IP_packet[4:6], "big")
-    message = IP_packet[6:].decode()
-    return {"ip": ip, "port": port, "message": message}
+    ttl = IP_packet[6]
+    message = IP_packet[7:].decode()
+    return {"ip": ip, "port": port, "ttl": ttl, "message": message}
 
 
 def create_packet(parsed_IP_packet: dict) -> bytes:
     ip_bytes = socket.inet_aton(parsed_IP_packet["ip"])
     port_bytes = parsed_IP_packet["port"].to_bytes(2, "big")
-    return ip_bytes + port_bytes + parsed_IP_packet["message"].encode()
-
+    ttl_byte = parsed_IP_packet["ttl"].to_bytes(1, "big")
+    return ip_bytes + port_bytes + ttl_byte + parsed_IP_packet["message"].encode()
 
 def _ip_to_int(ip: str) -> int:
     return int.from_bytes(socket.inet_aton(ip), "big")
@@ -26,18 +27,39 @@ def _in_network(ip: str, cidr: str) -> bool:
     return (_ip_to_int(ip) >> shift) == (_ip_to_int(net) >> shift)
 
 
+# Estado de round-robin: para cada "area" (misma red + mismo rango de puertos) 
+# guardamos el indice de la ultima ruta usada. 
+# La clave incluye el archivo de rutas para que distintas tablas no se mezclen.
+_ultima_ruta = {}
+
+
 def check_routes(routes_file_name: str, destination_address: tuple):
     dest_ip, dest_port = destination_address
+    area = None          # (cidr, p_ini, p_fin) de la primera linea que calza
+    candidatas = []      # todas las rutas de esa misma area, en orden
     with open(routes_file_name) as f:
         for line in f:
             line = line.strip()
             if line == "" or line.startswith("#"):
                 continue
             cidr, p_ini, p_fin, hop_ip, hop_port = line.split()
-            if (_in_network(dest_ip, cidr)
+            if not (_in_network(dest_ip, cidr)
                     and int(p_ini) <= dest_port <= int(p_fin)):
-                return (hop_ip, int(hop_port))
-    return None
+                continue
+            clave = (cidr, p_ini, p_fin)
+            if area is None:
+                area = clave
+            if clave == area:
+                candidatas.append((hop_ip, int(hop_port)))
+
+    if area is None:
+        return None
+
+    estado = (routes_file_name, area)
+    idx = (_ultima_ruta.get(estado, -1) + 1) % len(candidatas)
+    _ultima_ruta[estado] = idx
+    return candidatas[idx]
+
 
 def main():
     router_ip = sys.argv[1]
@@ -54,6 +76,11 @@ def main():
         parsed = parse_packet(IP_packet)
         destination = (parsed["ip"], parsed["port"])
 
+        # Paquete con TTL agotado: se ignora
+        if parsed["ttl"] <= 0:
+            print(f"Se recibió paquete {IP_packet} con TTL 0", flush=True)
+            continue
+
         if destination == my_address:
             print(parsed["message"], flush=True)
             continue
@@ -63,10 +90,13 @@ def main():
             print(f"No hay rutas hacia {destination} para paquete {IP_packet}",
                   flush=True)
         else:
-            print(f"redirigiendo paquete {IP_packet} con destino final "
+            # decrementar TTL antes de hacer forward
+            parsed["ttl"] -= 1
+            forwarded = create_packet(parsed)
+            print(f"redirigiendo paquete {forwarded} con destino final "
                   f"{destination} desde {my_address} hacia {next_hop}",
                   flush=True)
-            sock.sendto(IP_packet, next_hop)
+            sock.sendto(forwarded, next_hop)
 
 
 if __name__ == "__main__":
