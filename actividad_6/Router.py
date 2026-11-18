@@ -39,19 +39,18 @@ def _ip_to_int(ip: str) -> int:
 
 
 def _in_network(ip: str, cidr: str) -> bool:
-    # si la linea viene sin "/mascara" (como rutas_R5_v3_mtu del enunciado)
+    # si la linea viene sin "/mascara"
     # se compara la IP completa (/32)
     net, bits = cidr.split("/") if "/" in cidr else (cidr, "32")
     shift = 32 - int(bits)
     return (_ip_to_int(ip) >> shift) == (_ip_to_int(net) >> shift)
 
 
-# Round-robin: indice de la ultima ruta usada por (archivo, area)
 _ultima_ruta = {}
 
 
 def check_routes(routes_file_name: str, destination_address: tuple):
-    """Retorna (next_hop_address, MTU) o None si no hay ruta."""
+    #Retorna (next_hop_address, MTU) o None si no hay ruta.
     dest_ip, dest_port = destination_address
     area = None
     candidatas = []
@@ -81,7 +80,7 @@ def check_routes(routes_file_name: str, destination_address: tuple):
 
 
 def fragment_IP_packet(IP_packet: bytes, MTU) -> list:
-    """Lista de paquetes (bytes) tal que cada uno mide <= MTU. Largo >= 1."""
+    #Lista de paquetes (bytes) tal que cada uno mide <= MTU. Largo >= 1.
     if MTU is None or len(IP_packet) <= MTU:
         return [IP_packet]
     if MTU <= HEADER_SIZE:
@@ -97,15 +96,12 @@ def fragment_IP_packet(IP_packet: bytes, MTU) -> list:
         frag = dict(p)
         frag["message"] = parte
         frag["offset"] = p["offset"] + inicio
-        # si el paquete que fragmentamos ya era un fragmento intermedio
-        # (flag=1), su ultimo trozo tambien debe seguir con flag=1
         frag["flag"] = p["flag"] if es_ultimo_trozo else 1
         fragmentos.append(create_packet(frag))
     return fragmentos
 
 
 def reassemble_IP_packet(fragment_list: list):
-    """Paquete completo (bytes) o None si faltan fragmentos."""
     if not fragment_list:
         return None
     parsed = sorted((parse_packet(f) for f in fragment_list),
